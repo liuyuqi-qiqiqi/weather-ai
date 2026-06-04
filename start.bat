@@ -4,18 +4,27 @@ cd /d "%~dp0"
 
 echo ============================================================
 echo   [W] AI Dynamic Weather Query Service
-echo   Local: http://localhost:5000
-echo   Tunnel: use cpolar to map localhost:5000
 echo ============================================================
 
-:: 检查环境变量
-if "%DASHSCOPE_API_KEY%"=="" (
-    echo [WARN] DASHSCOPE_API_KEY not set - Qwen AI will be unavailable
-)
-if "%HEFENG_API_KEY%"=="" (
-    echo [WARN] HEFENG_API_KEY not set - Weather API will fallback
+:: 1. 从 .env 文件自动加载环境变量
+if exist ".env" (
+    echo [OK] Loading .env configuration...
+    for /f "tokens=1,2 delims==" %%a in (.env) do (
+        set "line=%%a%%b"
+        echo %%a | findstr /r "^#" >nul
+        if errorlevel 1 (
+            if not "%%b"=="" set "%%a=%%b"
+        )
+    )
+    echo [OK] Environment variables loaded from .env
+) else (
+    echo [WARN] .env file not found
 )
 
+echo.
+echo   Local:  http://localhost:5000
+echo   Tunnel: cpolar http 5000
+echo ============================================================
 echo.
 echo Starting server...
 python test.py

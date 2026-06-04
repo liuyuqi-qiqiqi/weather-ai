@@ -17,9 +17,30 @@ import asyncio
 import logging
 import threading
 from datetime import datetime
+from pathlib import Path
 
 import aiohttp
 from flask import Flask, request, jsonify, render_template
+
+# ---------------------------------------------------------------------------
+# 自动加载 .env 文件（项目根目录）
+# ---------------------------------------------------------------------------
+def _load_dotenv() -> None:
+    """简易 .env 解析器，无需额外依赖。"""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+_load_dotenv()
 
 # ---------------------------------------------------------------------------
 # 日志配置
@@ -37,10 +58,16 @@ log = logging.getLogger("weather-ai")
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
-# 配置 – 通过环境变量注入 API Key
+# 配置 – 优先环境变量，.env 文件已自动加载
 # ---------------------------------------------------------------------------
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "your-dashscope-key-here")
-HEFENG_API_KEY = os.getenv("HEFENG_API_KEY", "your-hefeng-key-here")
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+HEFENG_API_KEY = os.getenv("HEFENG_API_KEY", "")
+
+# 启动校验
+if not DASHSCOPE_API_KEY:
+    log.warning("DASHSCOPE_API_KEY 未配置，Qwen AI 将不可用")
+if not HEFENG_API_KEY:
+    log.warning("HEFENG_API_KEY 未配置，和风天气 API 将不可用")
 
 # ---------------------------------------------------------------------------
 # 内存缓存  (city_name → {ts: float, data: dict})  TTL = 10 分钟
@@ -60,9 +87,14 @@ _thread_local = threading.local()
 
 
 def _get_session() -> aiohttp.ClientSession:
-    """获取当前线程的 aiohttp session，线程安全。"""
+    """获取当前线程的 aiohttp session，线程安全，自动复用系统代理。"""
     if not hasattr(_thread_local, "session") or _thread_local.session is None or _thread_local.session.closed:
-        _thread_local.session = aiohttp.ClientSession(timeout=API_TIMEOUT)
+        # 自动检测系统代理（兼容国内网络环境访问外部 API）
+        trust_env = True  # aiohttp 自动读取 HTTP_PROXY/HTTPS_PROXY 环境变量
+        _thread_local.session = aiohttp.ClientSession(
+            timeout=API_TIMEOUT,
+            trust_env=trust_env,
+        )
     return _thread_local.session
 
 
@@ -597,9 +629,9 @@ def main():
     print()
     print("  Start cpolar: cpolar http 5000")
     print()
-    print("  Env:")
-    print(f"    DASHSCOPE_API_KEY = {'[OK]' if DASHSCOPE_API_KEY != 'your-dashscope-key-here' else '[MISSING]'}")
-    print(f"    HEFENG_API_KEY    = {'[OK]' if HEFENG_API_KEY != 'your-hefeng-key-here' else '[MISSING]'}")
+    print("  Env from .env:")
+    print(f"    DASHSCOPE_API_KEY = {'[OK] sk-...' + DASHSCOPE_API_KEY[-8:] if DASHSCOPE_API_KEY else '[MISSING]'}")
+    print(f"    HEFENG_API_KEY    = {'[OK] ' + HEFENG_API_KEY[:4] + '...' + HEFENG_API_KEY[-4:] if HEFENG_API_KEY else '[MISSING]'}")
     print("=" * 56)
 
     # Flask 开发服务器

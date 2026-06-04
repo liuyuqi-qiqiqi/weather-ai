@@ -15,8 +15,7 @@ env/
 .vscode/
 .idea/
 
-# 环境变量（API Key）
-.env
+# 环境变量
 .env.local
 
 # OS
